@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hacker Quest</title>
+  <style>
+    body {
+      background: linear-gradient(145deg, #000000, #0a0a0a);
+      color: #00ff00;
+      font-family: 'Courier New', Courier, monospace;
+      padding: 20px;
+      border-radius: 20px;
+      overflow-x: hidden;
+      animation: fadeIn 2s ease-in;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    h1, h2, h3 {
+      border-bottom: 2px solid #00ff00;
+      padding-bottom: 5px;
+      border-radius: 8px;
+      animation: pulse 3s infinite;
+    }
+    @keyframes pulse {
+      0% { text-shadow: 0 0 5px #00ff00; }
+      50% { text-shadow: 0 0 15px #00ff00; }
+      100% { text-shadow: 0 0 5px #00ff00; }
+    }
+    input, button {
+      background: #000;
+      color: #00ff00;
+      border: 2px solid #00ff00;
+      padding: 10px;
+      margin: 10px 5px 0 0;
+      border-radius: 10px;
+      transition: all 0.3s ease;
+    }
+    button:hover, input:focus {
+      background: #002200;
+      transform: scale(1.05);
+    }
+    .scoreboard {
+      margin-top: 30px;
+      padding: 15px;
+      border: 1px dashed #00ff00;
+      border-radius: 12px;
+      animation: glow 2s infinite alternate;
+    }
+    @keyframes glow {
+      0% { box-shadow: 0 0 5px #00ff00; }
+      100% { box-shadow: 0 0 15px #00ff00; }
+    }
+    .hint {
+      color: #aaffaa;
+      font-size: 0.9em;
+      margin-top: 15px;
+      border-left: 4px solid #00ff00;
+      padding-left: 10px;
+      animation: fadeIn 1s ease-in;
+    }
+    .timer {
+      margin-top: 15px;
+      color: #ff4444;
+      font-weight: bold;
+    }
+    .controls {
+      margin-top: 15px;
+    }
+    .leaderboard {
+      margin-top: 30px;
+      border-top: 2px solid #00ff00;
+      padding-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Hacker Quest: Level <span id="level">1</span></h1>
+  <div id="challenge">Loading...</div>
+  <input id="answer" type="text" placeholder="Enter your hack">
+  <div class="controls">
+    <button onclick="submitAnswer()">Hack!</button>
+    <button onclick="showHint()">Hint (-5 pts)</button>
+    <button onclick="resetProgress()">Reset Progress</button>
+  </div>
+  <div class="hint" id="hint"></div>
+  <div class="timer">⏱ Time left: <span id="time">60</span>s</div>
+  <div class="scoreboard">
+    <h2>Score: <span id="score">0</span></h2>
+    <h3>Achievements</h3>
+    <ul id="achievements"></ul>
+  </div>
+  <div class="leaderboard">
+    <h2>Leaderboard</h2>
+    <ul id="leaderboard"></ul>
+  </div>
+  <script>
+    let level = parseInt(localStorage.getItem('hq_level')) || 1;
+    let score = parseInt(localStorage.getItem('hq_score')) || 0;
+    let solution = '';
+    let timer;
+    let timeLeft = 60;
+    let hintCount = 0;
+    let hints = [];
+
+    const challenges = [
+      (lvl) => {
+        const str = Math.random().toString(36).substring(2, 6 + lvl);
+        solution = str.split('').reverse().join('');
+        hints = [`Try reversing the string.`, `Use split, reverse, join.`, `Answer is: ${solution}`];
+        return `Reverse this: ${str}`;
+      },
+      (lvl) => {
+        const nums = Array.from({ length: 4 + lvl % 5 }, () => Math.floor(Math.random() * 20));
+        solution = nums.reduce((a, b) => a + b, 0).toString();
+        hints = [`Add each number.`, `Use reduce.`, `Answer is: ${solution}`];
+        return `Add these numbers: ${nums.join(' + ')}`;
+      },
+      (lvl) => {
+        const str = 'hack' + lvl;
+        solution = btoa(str);
+        hints = [`Use Base64 encoding.`, `Try btoa()`, `Answer is: ${solution}`];
+        return `Base64 encode "${str}"`;
+      },
+      (lvl) => {
+        const hex = lvl.toString(16);
+        solution = parseInt(hex, 16).toString();
+        hints = [`Convert hex to decimal.`, `Use parseInt(hex, 16)`, `Answer is: ${solution}`];
+        return `Convert from hex: ${hex}`;
+      },
+      (lvl) => {
+        const log = `INFO 2025-04-30 12:34:56: User logged in\nERROR 2025-04-30 12:35:00: Invalid password\nFLAG{ctf_l0g_4n4lysis}`;
+        solution = 'FLAG{ctf_l0g_4n4lysis}';
+        hints = [`Look for CTF patterns`, `Starts with FLAG{}`, `Answer is: ${solution}`];
+        return `Analyze this log:\n${log}`;
+      },
+      (lvl) => {
+        const brainfuck = '+++++[>++++++++<-]>.';
+        solution = 'A';
+        hints = [`This is Brainfuck.`, `Use an interpreter.`, `Answer is: ${solution}`];
+        return `Decode this Brainfuck: ${brainfuck}`;
+      }
+    ];
+
+    function getChallenge() {
+      const challengeFn = challenges[level % challenges.length];
+      document.getElementById('challenge').innerText = challengeFn(level);
+      document.getElementById('level').innerText = level;
+      document.getElementById('hint').innerText = '';
+      document.getElementById('answer').value = '';
+      document.getElementById('score').innerText = score;
+      hintCount = 0;
+      timeLeft = 60;
+      saveProgress();
+    }
+
+    function submitAnswer() {
+      const userInput = document.getElementById('answer').value.trim();
+      if (userInput === solution) {
+        score += 10 * level;
+        level++;
+        unlockAchievement(level);
+        updateLeaderboard();
+        saveProgress();
+        getChallenge();
+      } else {
+        alert('Incorrect hack! Try again.');
+      }
+    }
+
+    function showHint() {
+      if (hintCount < 3) {
+        document.getElementById('hint').innerText = hints[hintCount];
+        score = Math.max(score - 5, 0);
+        document.getElementById('score').innerText = score;
+        hintCount++;
+        saveProgress();
+      } else {
+        document.getElementById('hint').innerText = 'No more hints available.';
+      }
+    }
+
+    function resetProgress() {
+      if (confirm('Are you sure you want to reset your progress?')) {
+        localStorage.removeItem('hq_level');
+        localStorage.removeItem('hq_score');
+        level = 1;
+        score = 0;
+        getChallenge();
+        updateLeaderboard();
+      }
+    }
+
+    function unlockAchievement(lvl) {
+      if (lvl === 5 || lvl === 10 || lvl % 20 === 0) {
+        const achievement = document.createElement('li');
+        achievement.innerText = `Level ${lvl} unlocked!`;
+        document.getElementById('achievements').appendChild(achievement);
+      }
+    }
+
+    function countdown() {
+      document.getElementById('time').innerText = timeLeft;
+      timeLeft--;
+      if (timeLeft < 0) {
+        clearInterval(timer);
+        alert('Time is up! Reloading...');
+        location.reload();
+      }
+    }
+
+    function updateLeaderboard() {
+      const leaderboard = JSON.parse(localStorage.getItem('hq_leaderboard') || '[]');
+      leaderboard.push({ level, score, time: new Date().toLocaleString() });
+      leaderboard.sort((a, b) => b.score - a.score);
+      localStorage.setItem('hq_leaderboard', JSON.stringify(leaderboard.slice(0, 10)));
+      const list = document.getElementById('leaderboard');
+      list.innerHTML = '';
+      leaderboard.slice(0, 10).forEach((entry, idx) => {
+        const li = document.createElement('li');
+        li.innerText = `#${idx + 1} - Score: ${entry.score}, Level: ${entry.level}, Time: ${entry.time}`;
+        list.appendChild(li);
+      });
+    }
+
+    function saveProgress() {
+      localStorage.setItem('hq_level', level);
+      localStorage.setItem('hq_score', score);
+    }
+
+    timer = setInterval(countdown, 1000);
+    getChallenge();
+    updateLeaderboard();
+  </script>
+</body>
+</html>
